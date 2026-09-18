@@ -10,30 +10,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: Criar projeto
+      - name: Criar projeto NEXA
+        shell: bash
         run: |
           rm -rf nexa
+
           mkdir -p nexa/app/src/main/java/com/jpastore/nexa
           mkdir -p nexa/app/src/main/res/values
 
+          cat > nexa/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          kotlin.code.style=official
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
           cat > nexa/settings.gradle.kts <<'EOF'
-          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { google(); mavenCentral() }
+
+              repositories {
+                  google()
+                  mavenCentral()
+              }
           }
-          rootProject.name="NEXA"
+
+          rootProject.name = "NEXA"
           include(":app")
           EOF
 
@@ -53,23 +76,25 @@ jobs:
           }
 
           android {
-              namespace="com.jpastore.nexa"
-              compileSdk=35
+              namespace = "com.jpastore.nexa"
+              compileSdk = 35
 
               defaultConfig {
-                  applicationId="com.jpastore.nexa"
-                  minSdk=26
-                  targetSdk=35
-                  versionCode=4
-                  versionName="0.4"
+                  applicationId = "com.jpastore.nexa"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 7
+                  versionName = "0.7.0"
               }
 
               compileOptions {
-                  sourceCompatibility=JavaVersion.VERSION_17
-                  targetCompatibility=JavaVersion.VERSION_17
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
               }
 
-              buildFeatures { compose=true }
+              buildFeatures {
+                  compose = true
+              }
           }
 
           dependencies {
@@ -83,24 +108,36 @@ jobs:
 
           cat > nexa/app/src/main/res/values/styles.xml <<'EOF'
           <resources>
-            <style name="NexaTheme" parent="android:style/Theme.Material.NoActionBar">
-              <item name="android:statusBarColor">#050B09</item>
-              <item name="android:navigationBarColor">#050B09</item>
-            </style>
+              <style name="NexaTheme" parent="android:style/Theme.Material.NoActionBar">
+                  <item name="android:statusBarColor">#050B09</item>
+                  <item name="android:navigationBarColor">#050B09</item>
+                  <item name="android:windowLightStatusBar">false</item>
+              </style>
           </resources>
           EOF
 
           cat > nexa/app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:theme="@style/NexaTheme" android:label="NEXA">
-              <activity android:name=".MainActivity" android:exported="true">
-                <intent-filter>
-                  <action android:name="android.intent.action.MAIN"/>
-                  <category android:name="android.intent.category.LAUNCHER"/>
-                </intent-filter>
-              </activity>
-            </application>
+
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:label="NEXA"
+                  android:theme="@style/NexaTheme">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
           </manifest>
           EOF
 
@@ -108,84 +145,184 @@ jobs:
           package com.jpastore.nexa
 
           import android.app.Activity
-          import android.content.*
+          import android.content.Context
+          import android.content.Intent
           import android.net.Uri
           import android.os.Bundle
           import android.speech.RecognizerIntent
           import androidx.activity.ComponentActivity
-          import androidx.activity.compose.*
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
           import androidx.activity.result.contract.ActivityResultContracts
-          import androidx.compose.foundation.*
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.clickable
           import androidx.compose.foundation.layout.*
           import androidx.compose.foundation.rememberScrollState
-          import androidx.compose.foundation.shape.*
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
           import androidx.compose.foundation.verticalScroll
           import androidx.compose.material.icons.Icons
           import androidx.compose.material.icons.filled.*
           import androidx.compose.material3.*
           import androidx.compose.runtime.*
-          import androidx.compose.ui.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
           import androidx.compose.ui.graphics.Color
           import androidx.compose.ui.platform.LocalContext
           import androidx.compose.ui.text.font.FontWeight
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
 
-          val bg=Color(0xFF050B09)
-          val card=Color(0xFF0D1714)
-          val green=Color(0xFF00E676)
-          val soft=Color(0xFF93A79F)
+          private val BG = Color(0xFF050B09)
+          private val PANEL = Color(0xFF0D1714)
+          private val PANEL2 = Color(0xFF14241E)
+          private val GREEN = Color(0xFF00E676)
+          private val SOFT = Color(0xFF93A79F)
 
-          class MainActivity:ComponentActivity(){
-              override fun onCreate(b:Bundle?){
-                  super.onCreate(b)
-                  setContent{ App() }
+          class MainActivity : ComponentActivity() {
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  setContent {
+                      NexaApp()
+                  }
               }
           }
 
-          fun open(c:Context,url:String){
-              c.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
+          private fun openUrl(
+              context: Context,
+              url: String
+          ) {
+              try {
+                  context.startActivity(
+                      Intent(
+                          Intent.ACTION_VIEW,
+                          Uri.parse(url)
+                      )
+                  )
+              } catch (_: Exception) {
+              }
           }
 
           @Composable
-          fun App(){
-              var tab by remember{mutableIntStateOf(0)}
+          fun NexaApp() {
+
+              var tab by remember {
+                  mutableIntStateOf(0)
+              }
 
               MaterialTheme(
-                  colorScheme=darkColorScheme(
-                      primary=green,
-                      background=bg,
-                      surface=card
+                  colorScheme = darkColorScheme(
+                      primary = GREEN,
+                      background = BG,
+                      surface = PANEL
                   )
-              ){
+              ) {
+
                   Scaffold(
-                      containerColor=bg,
-                      bottomBar={
-                          NavigationBar(containerColor=Color(0xFF08110E)){
-                              listOf(
-                                  Triple("Início",Icons.Default.Home,0),
-                                  Triple("Agenda",Icons.Default.DateRange,1),
-                                  Triple("NEXA",Icons.Default.Mic,2),
-                                  Triple("Central",Icons.Default.GridView,3),
-                                  Triple("Tarefas",Icons.Default.CheckCircle,4)
-                              ).forEach{
+                      containerColor = BG,
+
+                      bottomBar = {
+
+                          NavigationBar(
+                              containerColor = Color(0xFF08110E)
+                          ) {
+
+                              val items = listOf(
+                                  Triple(
+                                      "Início",
+                                      Icons.Default.Home,
+                                      0
+                                  ),
+                                  Triple(
+                                      "Agenda",
+                                      Icons.Default.DateRange,
+                                      1
+                                  ),
+                                  Triple(
+                                      "NEXA",
+                                      Icons.Default.Mic,
+                                      2
+                                  ),
+                                  Triple(
+                                      "Central",
+                                      Icons.Default.GridView,
+                                      3
+                                  ),
+                                  Triple(
+                                      "Tarefas",
+                                      Icons.Default.CheckCircle,
+                                      4
+                                  )
+                              )
+
+                              items.forEach { item ->
+
                                   NavigationBarItem(
-                                      selected=tab==it.third,
-                                      onClick={tab=it.third},
-                                      icon={Icon(it.second,it.first)},
-                                      label={Text(it.first,fontSize=9.sp)}
+                                      selected = tab == item.third,
+
+                                      onClick = {
+                                          tab = item.third
+                                      },
+
+                                      icon = {
+                                          Icon(
+                                              item.second,
+                                              item.first
+                                          )
+                                      },
+
+                                      label = {
+                                          Text(
+                                              item.first,
+                                              fontSize = 9.sp
+                                          )
+                                      },
+
+                                      colors =
+                                          NavigationBarItemDefaults.colors(
+                                              selectedIconColor = GREEN,
+                                              selectedTextColor = GREEN,
+                                              indicatorColor = PANEL2,
+                                              unselectedIconColor = SOFT,
+                                              unselectedTextColor = SOFT
+                                          )
                                   )
                               }
                           }
                       }
-                  ){p->
-                      Box(Modifier.padding(p)){
-                          when(tab){
-                              0->Home({tab=1},{tab=2},{tab=4})
-                              1->Agenda()
-                              2->Voice()
-                              3->Central()
-                              else->Tasks()
+                  ) { padding ->
+
+                      Box(
+                          modifier = Modifier
+                              .fillMaxSize()
+                              .padding(padding)
+                      ) {
+
+                          when (tab) {
+
+                              0 -> HomeScreen(
+                                  openAgenda = {
+                                      tab = 1
+                                  },
+
+                                  openNexa = {
+                                      tab = 2
+                                  },
+
+                                  openTasks = {
+                                      tab = 4
+                                  }
+                              )
+
+                              1 -> AgendaScreen()
+
+                              2 -> NexaVoiceScreen()
+
+                              3 -> CentralScreen()
+
+                              4 -> TasksScreen()
                           }
                       }
                   }
@@ -194,370 +331,241 @@ jobs:
 
           @Composable
           fun Page(
-              title:String,
-              content:@Composable ColumnScope.()->Unit
-          ){
+              title: String,
+              subtitle: String,
+              content: @Composable ColumnScope.() -> Unit
+          ) {
+
               Column(
-                  Modifier
+                  modifier = Modifier
                       .fillMaxSize()
-                      .verticalScroll(rememberScrollState())
+                      .verticalScroll(
+                          rememberScrollState()
+                      )
                       .padding(20.dp)
-              ){
-                  Row(verticalAlignment=Alignment.CenterVertically){
+              ) {
+
+                  Row(
+                      verticalAlignment =
+                          Alignment.CenterVertically
+                  ) {
+
                       Surface(
-                          Modifier.size(50.dp),
-                          RoundedCornerShape(16.dp),
-                          color=green
-                      ){
-                          Box(contentAlignment=Alignment.Center){
+                          modifier = Modifier.size(52.dp),
+                          shape = RoundedCornerShape(17.dp),
+                          color = GREEN
+                      ) {
+
+                          Box(
+                              contentAlignment =
+                                  Alignment.Center
+                          ) {
+
                               Text(
                                   "N",
-                                  color=bg,
-                                  fontWeight=FontWeight.Black,
-                                  fontSize=28.sp
+                                  color = BG,
+                                  fontSize = 30.sp,
+                                  fontWeight =
+                                      FontWeight.Black
                               )
                           }
                       }
 
-                      Spacer(Modifier.width(14.dp))
+                      Spacer(
+                          Modifier.width(14.dp)
+                      )
 
-                      Column{
+                      Column {
+
                           Text(
                               title,
-                              fontSize=25.sp,
-                              fontWeight=FontWeight.Bold
+                              color = Color.White,
+                              fontSize = 25.sp,
+                              fontWeight =
+                                  FontWeight.Bold
                           )
-                          Text("NEXA • Mobile First",color=soft)
+
+                          Text(
+                              subtitle,
+                              color = SOFT,
+                              fontSize = 12.sp
+                          )
                       }
                   }
 
-                  Spacer(Modifier.height(24.dp))
+                  Spacer(
+                      Modifier.height(25.dp)
+                  )
+
                   content()
               }
           }
 
           @Composable
-          fun BoxCard(
-              title:String,
-              text:String,
-              click:()->Unit={}
-          ){
+          fun NexaCard(
+              title: String,
+              subtitle: String,
+              onClick: () -> Unit = {}
+          ) {
+
               Card(
-                  Modifier
+                  modifier = Modifier
                       .fillMaxWidth()
-                      .padding(vertical=6.dp)
-                      .clickable{click()},
-                  colors=CardDefaults.cardColors(containerColor=card),
-                  shape=RoundedCornerShape(20.dp)
-              ){
-                  Column(Modifier.padding(18.dp)){
-                      Text(title,fontWeight=FontWeight.Bold,fontSize=17.sp)
-                      Text(text,color=soft)
-                  }
-              }
-          }
-
-          @Composable
-          fun Home(
-              agenda:()->Unit,
-              voice:()->Unit,
-              tasks:()->Unit
-          ){
-              Page("Meu Dia"){
-                  Text("VISÃO GERAL",color=green,fontWeight=FontWeight.Bold)
-
-                  BoxCard(
-                      "Tudo sob controle",
-                      "Sua central pessoal NEXA."
-                  )
-
-                  BoxCard(
-                      "Agenda",
-                      "Toque para abrir seus compromissos.",
-                      agenda
-                  )
-
-                  BoxCard(
-                      "Tarefas",
-                      "Toque para abrir suas tarefas.",
-                      tasks
-                  )
-
-                  Button(
-                      onClick=voice,
-                      Modifier
-                          .fillMaxWidth()
-                          .padding(top=15.dp)
-                  ){
-                      Icon(Icons.Default.Mic,null)
-                      Spacer(Modifier.width(8.dp))
-                      Text("Falar com a NEXA")
-                  }
-              }
-          }
-
-          @Composable
-          fun Agenda(){
-              var items by remember{mutableStateOf(listOf<String>())}
-              var dialog by remember{mutableStateOf(false)}
-              var value by remember{mutableStateOf("")}
-
-              Page("Agenda"){
-                  if(items.isEmpty()){
-                      BoxCard(
-                          "Nenhum compromisso",
-                          "Adicione um compromisso."
-                      )
-                  }
-
-                  items.forEachIndexed{i,x->
-                      Card(
-                          Modifier
-                              .fillMaxWidth()
-                              .padding(5.dp),
-                          colors=CardDefaults.cardColors(containerColor=card)
-                      ){
-                          Row(
-                              Modifier.padding(15.dp),
-                              verticalAlignment=Alignment.CenterVertically
-                          ){
-                              Icon(Icons.Default.Event,null,tint=green)
-                              Spacer(Modifier.width(10.dp))
-                              Text(x,Modifier.weight(1f))
-                              IconButton(onClick={
-                                  items=items.filterIndexed{n,_->n!=i}
-                              }){
-                                  Icon(Icons.Default.Delete,null)
-                              }
-                          }
-                      }
-                  }
-
-                  Button(
-                      onClick={dialog=true},
-                      Modifier.fillMaxWidth()
-                  ){
-                      Text("+ Novo compromisso")
-                  }
-              }
-
-              if(dialog){
-                  AlertDialog(
-                      onDismissRequest={dialog=false},
-                      title={Text("Novo compromisso")},
-                      text={
-                          OutlinedTextField(
-                              value=value,
-                              onValueChange={value=it},
-                              label={Text("Compromisso")}
-                          )
+                      .padding(vertical = 6.dp)
+                      .clickable {
+                          onClick()
                       },
-                      confirmButton={
-                          Button(onClick={
-                              if(value.isNotBlank()){
-                                  items=items+value
-                                  value=""
-                                  dialog=false
-                              }
-                          }){Text("Salvar")}
-                      },
-                      dismissButton={
-                          TextButton(onClick={dialog=false}){
-                              Text("Cancelar")
-                          }
-                      }
-                  )
-              }
-          }
 
-          @Composable
-          fun Tasks(){
-              var items by remember{mutableStateOf(listOf<String>())}
-              var dialog by remember{mutableStateOf(false)}
-              var value by remember{mutableStateOf("")}
+                  colors =
+                      CardDefaults.cardColors(
+                          containerColor = PANEL
+                      ),
 
-              Page("Tarefas"){
-                  if(items.isEmpty()){
-                      BoxCard(
-                          "Nenhuma tarefa",
-                          "Adicione sua primeira tarefa."
-                      )
-                  }
+                  shape =
+                      RoundedCornerShape(21.dp)
+              ) {
 
-                  items.forEachIndexed{i,x->
-                      Card(
-                          Modifier
-                              .fillMaxWidth()
-                              .padding(5.dp),
-                          colors=CardDefaults.cardColors(containerColor=card)
-                      ){
-                          Row(
-                              Modifier.padding(15.dp),
-                              verticalAlignment=Alignment.CenterVertically
-                          ){
-                              Icon(Icons.Default.CheckCircle,null,tint=green)
-                              Spacer(Modifier.width(10.dp))
-                              Text(x,Modifier.weight(1f))
-                              IconButton(onClick={
-                                  items=items.filterIndexed{n,_->n!=i}
-                              }){
-                                  Icon(Icons.Default.Delete,null)
-                              }
-                          }
-                      }
-                  }
-
-                  Button(
-                      onClick={dialog=true},
-                      Modifier.fillMaxWidth()
-                  ){
-                      Text("+ Adicionar tarefa")
-                  }
-              }
-
-              if(dialog){
-                  AlertDialog(
-                      onDismissRequest={dialog=false},
-                      title={Text("Nova tarefa")},
-                      text={
-                          OutlinedTextField(
-                              value=value,
-                              onValueChange={value=it},
-                              label={Text("Tarefa")}
-                          )
-                      },
-                      confirmButton={
-                          Button(onClick={
-                              if(value.isNotBlank()){
-                                  items=items+value
-                                  value=""
-                                  dialog=false
-                              }
-                          }){Text("Salvar")}
-                      },
-                      dismissButton={
-                          TextButton(onClick={dialog=false}){
-                              Text("Cancelar")
-                          }
-                      }
-                  )
-              }
-          }
-
-          @Composable
-          fun Voice(){
-              var result by remember{mutableStateOf("")}
-
-              val launcher=rememberLauncherForActivityResult(
-                  ActivityResultContracts.StartActivityForResult()
-              ){r->
-                  if(r.resultCode==Activity.RESULT_OK){
-                      result=r.data
-                          ?.getStringArrayListExtra(
-                              RecognizerIntent.EXTRA_RESULTS
-                          )
-                          ?.firstOrNull()
-                          .orEmpty()
-                  }
-              }
-
-              Box(
-                  Modifier.fillMaxSize(),
-                  contentAlignment=Alignment.Center
-              ){
-                  Column(horizontalAlignment=Alignment.CenterHorizontally){
-                      Surface(
-                          onClick={
-                              launcher.launch(
-                                  Intent(
-                                      RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-                                  ).apply{
-                                      putExtra(
-                                          RecognizerIntent.EXTRA_LANGUAGE,
-                                          "pt-BR"
-                                      )
-                                  }
-                              )
-                          },
-                          modifier=Modifier.size(180.dp),
-                          shape=CircleShape,
-                          color=green.copy(alpha=.12f),
-                          border=BorderStroke(2.dp,green)
-                      ){
-                          Box(contentAlignment=Alignment.Center){
-                              Icon(
-                                  Icons.Default.Mic,
-                                  null,
-                                  tint=green,
-                                  modifier=Modifier.size(70.dp)
-                              )
-                          }
-                      }
-
-                      Spacer(Modifier.height(25.dp))
+                  Column(
+                      modifier =
+                          Modifier.padding(18.dp)
+                  ) {
 
                       Text(
-                          "Como posso ajudar?",
-                          fontSize=26.sp,
-                          fontWeight=FontWeight.Bold
+                          title,
+                          color = Color.White,
+                          fontSize = 17.sp,
+                          fontWeight =
+                              FontWeight.Bold
                       )
 
-                      if(result.isNotBlank()){
-                          Spacer(Modifier.height(15.dp))
-                          Text("Você disse: $result",color=soft)
-                      }
+                      Spacer(
+                          Modifier.height(4.dp)
+                      )
+
+                      Text(
+                          subtitle,
+                          color = SOFT
+                      )
                   }
               }
           }
 
           @Composable
-          fun Central(){
-              val c=LocalContext.current
+          fun HomeScreen(
+              openAgenda: () -> Unit,
+              openNexa: () -> Unit,
+              openTasks: () -> Unit
+          ) {
 
-              Page("Central"){
-                  BoxCard(
-                      "Google",
-                      "Abrir conta Google"
-                  ){open(c,"https://myaccount.google.com")}
+              Page(
+                  title = "Meu Dia",
+                  subtitle =
+                      "NEXA • sua rotina em um só lugar"
+              ) {
 
-                  BoxCard(
-                      "Google Agenda",
-                      "Abrir Google Agenda"
-                  ){open(c,"https://calendar.google.com")}
+                  Text(
+                      "VISÃO GERAL",
+                      color = GREEN,
+                      fontSize = 12.sp,
+                      fontWeight =
+                          FontWeight.Bold
+                  )
 
-                  BoxCard(
-                      "Google Drive",
-                      "Abrir Google Drive"
-                  ){open(c,"https://drive.google.com")}
+                  NexaCard(
+                      title = "Tudo sob controle",
+                      subtitle =
+                          "Sua central pessoal NEXA."
+                  )
 
-                  BoxCard(
-                      "WhatsApp",
-                      "Abrir WhatsApp"
-                  ){open(c,"https://wa.me/")}
+                  Spacer(
+                      Modifier.height(8.dp)
+                  )
 
-                  BoxCard(
-                      "Instagram",
-                      "Abrir Instagram"
-                  ){open(c,"https://instagram.com")}
+                  Text(
+                      "ACESSO RÁPIDO",
+                      color = SOFT,
+                      fontSize = 12.sp,
+                      fontWeight =
+                          FontWeight.Bold
+                  )
 
-                  BoxCard(
-                      "Facebook",
-                      "Abrir Facebook"
-                  ){open(c,"https://facebook.com")}
+                  NexaCard(
+                      title = "Agenda",
+                      subtitle =
+                          "Toque para abrir seus compromissos.",
+                      onClick = openAgenda
+                  )
 
-                  BoxCard(
-                      "ChatGPT",
-                      "Abrir ChatGPT"
-                  ){open(c,"https://chatgpt.com")}
+                  NexaCard(
+                      title = "Tarefas",
+                      subtitle =
+                          "Toque para abrir suas tarefas.",
+                      onClick = openTasks
+                  )
+
+                  Spacer(
+                      Modifier.height(14.dp)
+                  )
+
+                  Button(
+                      onClick = openNexa,
+                      modifier =
+                          Modifier.fillMaxWidth(),
+
+                      colors =
+                          ButtonDefaults.buttonColors(
+                              containerColor = GREEN
+                          )
+                  ) {
+
+                      Icon(
+                          Icons.Default.Mic,
+                          contentDescription = null,
+                          tint = BG
+                      )
+
+                      Spacer(
+                          Modifier.width(8.dp)
+                      )
+
+                      Text(
+                          "Falar com a NEXA",
+                          color = BG,
+                          fontWeight =
+                              FontWeight.Bold
+                      )
+                  }
               }
           }
-          EOF
 
-      - name: COMPILAR APK
-        working-directory: nexa
-        run: gradle --no-daemon assembleDebug
+          @Composable
+          fun AgendaScreen() {
 
-      - name: CONFIRMAR APK
-        run: |
-          test -f nexa/app/build/outputs/apk/debug/app-debug.apk
-          ls -lh nexa/app/build/outp
+              var appointments by remember {
+                  mutableStateOf(
+                      listOf<String>()
+                  )
+              }
+
+              var dialog by remember {
+                  mutableStateOf(false)
+              }
+
+              var text by remember {
+                  mutableStateOf("")
+              }
+
+              Page(
+                  title = "Agenda",
+                  subtitle =
+                      "Compromissos e horários"
+              ) {
+
+                  Row(
+                      horizontalArrangement =
+                          Arrangement.spacedBy(8.dp)
+                  ) {
+
+                      Button(
+                          onClick = {},
+                         
