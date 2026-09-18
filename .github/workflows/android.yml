@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "nexa/**"
+      - "NEXA_ANDROID_PROJECT.zip"
       - ".github/workflows/android.yml"
 
 jobs:
@@ -15,6 +15,13 @@ jobs:
     steps:
       - name: BAIXAR PROJETO
         uses: actions/checkout@v4
+
+      - name: EXTRAIR NEXA
+        run: |
+          rm -rf nexa
+          unzip -q NEXA_ANDROID_PROJECT.zip
+          test -f nexa/settings.gradle
+          test -f nexa/app/build.gradle
 
       - name: CONFIGURAR JAVA
         uses: actions/setup-java@v4
@@ -32,11 +39,13 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: CONFIRMAR APK
-        run: test -f nexa/app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          test -f nexa/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh nexa/app/build/outputs/apk/debug/app-debug.apk
 
       - name: PUBLICAR APK
         uses: actions/upload-artifact@v4
         with:
-          name: NEXA-APK
+          name: NEXA-1.0-APK
           path: nexa/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
