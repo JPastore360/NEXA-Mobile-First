@@ -1,4 +1,4 @@
-name: Build NEXA Original
+name: Build NEXA Functional
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Criar projeto NEXA
+      - name: Criar NEXA
         run: |
           rm -rf nexa
           mkdir -p nexa/app/src/main/java/com/jpastore/nexa
@@ -29,18 +29,11 @@ jobs:
 
           cat > nexa/settings.gradle.kts <<'EOF'
           pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = "NEXA"
           include(":app")
@@ -75,8 +68,8 @@ jobs:
                   applicationId = "com.jpastore.nexa"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 2
-                  versionName = "0.2.0"
+                  versionCode = 3
+                  versionName = "0.3.0"
               }
 
               compileOptions {
@@ -84,9 +77,7 @@ jobs:
                   targetCompatibility = JavaVersion.VERSION_17
               }
 
-              buildFeatures {
-                  compose = true
-              }
+              buildFeatures { compose = true }
           }
 
           dependencies {
@@ -113,6 +104,12 @@ jobs:
               <uses-permission android:name="android.permission.RECORD_AUDIO"/>
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+              <queries>
+                  <package android:name="com.whatsapp"/>
+                  <package android:name="com.instagram.android"/>
+                  <package android:name="com.facebook.katana"/>
+              </queries>
+
               <application
                   android:theme="@style/Theme.Nexa"
                   android:label="NEXA">
@@ -125,7 +122,6 @@ jobs:
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
-
                   </activity>
               </application>
           </manifest>
@@ -134,10 +130,15 @@ jobs:
           cat > nexa/app/src/main/java/com/jpastore/nexa/MainActivity.kt <<'EOF'
           package com.jpastore.nexa
 
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
           import android.os.Bundle
+          import android.speech.RecognizerIntent
+          import android.widget.Toast
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.setContent
-          import androidx.compose.foundation.background
+          import androidx.compose.foundation.clickable
           import androidx.compose.foundation.layout.*
           import androidx.compose.foundation.rememberScrollState
           import androidx.compose.foundation.shape.CircleShape
@@ -149,18 +150,35 @@ jobs:
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
-          import androidx.compose.ui.graphics.Brush
           import androidx.compose.ui.graphics.Color
           import androidx.compose.ui.graphics.vector.ImageVector
+          import androidx.compose.ui.platform.LocalContext
           import androidx.compose.ui.text.font.FontWeight
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
+          import java.text.SimpleDateFormat
+          import java.util.*
 
-          private val Bg = Color(0xFF050B09)
-          private val Panel = Color(0xFF0C1713)
-          private val Panel2 = Color(0xFF12221C)
-          private val Green = Color(0xFF00E676)
-          private val Soft = Color(0xFF91A79E)
+          private val BG = Color(0xFF050B09)
+          private val PANEL = Color(0xFF0C1713)
+          private val PANEL2 = Color(0xFF12221C)
+          private val GREEN = Color(0xFF00E676)
+          private val SOFT = Color(0xFF91A79E)
+
+          data class TaskItem(
+              val id: Long,
+              val title: String,
+              val date: String,
+              val priority: String,
+              val done: Boolean
+          )
+
+          data class EventItem(
+              val id: Long,
+              val title: String,
+              val date: String,
+              val time: String
+          )
 
           class MainActivity : ComponentActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
@@ -169,55 +187,166 @@ jobs:
               }
           }
 
-          data class NexaTab(
-              val name: String,
-              val icon: ImageVector
-          )
+          fun saveTasks(context: Context, tasks: List<TaskItem>) {
+              val data = tasks.joinToString("§") {
+                  "${it.id}|${it.title.replace("|"," ")}|${it.date}|${it.priority}|${it.done}"
+              }
+              context.getSharedPreferences("nexa", Context.MODE_PRIVATE)
+                  .edit().putString("tasks", data).apply()
+          }
+
+          fun loadTasks(context: Context): List<TaskItem> {
+              val data = context.getSharedPreferences("nexa", Context.MODE_PRIVATE)
+                  .getString("tasks", "") ?: ""
+
+              if (data.isBlank()) return emptyList()
+
+              return data.split("§").mapNotNull {
+                  val p = it.split("|")
+                  if (p.size >= 5)
+                      TaskItem(
+                          p[0].toLongOrNull() ?: 0,
+                          p[1],
+                          p[2],
+                          p[3],
+                          p[4].toBoolean()
+                      )
+                  else null
+              }
+          }
+
+          fun saveEvents(context: Context, events: List<EventItem>) {
+              val data = events.joinToString("§") {
+                  "${it.id}|${it.title.replace("|"," ")}|${it.date}|${it.time}"
+              }
+              context.getSharedPreferences("nexa", Context.MODE_PRIVATE)
+                  .edit().putString("events", data).apply()
+          }
+
+          fun loadEvents(context: Context): List<EventItem> {
+              val data = context.getSharedPreferences("nexa", Context.MODE_PRIVATE)
+                  .getString("events", "") ?: ""
+
+              if (data.isBlank()) return emptyList()
+
+              return data.split("§").mapNotNull {
+                  val p = it.split("|")
+                  if (p.size >= 4)
+                      EventItem(
+                          p[0].toLongOrNull() ?: 0,
+                          p[1],
+                          p[2],
+                          p[3]
+                      )
+                  else null
+              }
+          }
+
+          fun openUrl(context: Context, url: String) {
+              try {
+                  context.startActivity(
+                      Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                  )
+              } catch (_: Exception) {
+                  Toast.makeText(
+                      context,
+                      "Não foi possível abrir o serviço.",
+                      Toast.LENGTH_SHORT
+                  ).show()
+              }
+          }
+
+          fun openWhatsApp(context: Context) {
+              try {
+                  val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/"))
+                  intent.setPackage("com.whatsapp")
+                  context.startActivity(intent)
+              } catch (_: Exception) {
+                  openUrl(context, "https://www.whatsapp.com/")
+              }
+          }
+
+          fun startVoice(context: Context) {
+              try {
+                  val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                  intent.putExtra(
+                      RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                      RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                  )
+                  intent.putExtra(
+                      RecognizerIntent.EXTRA_LANGUAGE,
+                      "pt-BR"
+                  )
+                  intent.putExtra(
+                      RecognizerIntent.EXTRA_PROMPT,
+                      "Fale com a NEXA"
+                  )
+                  context.startActivity(intent)
+              } catch (_: Exception) {
+                  Toast.makeText(
+                      context,
+                      "Reconhecimento de voz indisponível.",
+                      Toast.LENGTH_SHORT
+                  ).show()
+              }
+          }
 
           @Composable
           fun NexaApp() {
-              val tabs = listOf(
-                  NexaTab("Início", Icons.Default.Home),
-                  NexaTab("Agenda", Icons.Default.DateRange),
-                  NexaTab("NEXA", Icons.Default.AutoAwesome),
-                  NexaTab("Central", Icons.Default.GridView),
-                  NexaTab("Tarefas", Icons.Default.CheckCircle)
-              )
 
-              var selected by remember { mutableIntStateOf(0) }
+              val context = LocalContext.current
+
+              var tab by remember { mutableIntStateOf(0) }
+              var tasks by remember { mutableStateOf(loadTasks(context)) }
+              var events by remember { mutableStateOf(loadEvents(context)) }
+
+              val tabs = listOf(
+                  Triple("Início", Icons.Default.Home, 0),
+                  Triple("Agenda", Icons.Default.DateRange, 1),
+                  Triple("NEXA", Icons.Default.AutoAwesome, 2),
+                  Triple("Central", Icons.Default.GridView, 3),
+                  Triple("Tarefas", Icons.Default.CheckCircle, 4)
+              )
 
               MaterialTheme(
                   colorScheme = darkColorScheme(
-                      primary = Green,
-                      background = Bg,
-                      surface = Panel
+                      primary = GREEN,
+                      background = BG,
+                      surface = PANEL
                   )
               ) {
+
                   Scaffold(
-                      containerColor = Bg,
+                      containerColor = BG,
                       bottomBar = {
+
                           NavigationBar(
                               containerColor = Color(0xFF08110E)
                           ) {
-                              tabs.forEachIndexed { index, tab ->
+
+                              tabs.forEach { item ->
+
                                   NavigationBarItem(
-                                      selected = selected == index,
-                                      onClick = { selected = index },
+                                      selected = tab == item.third,
+                                      onClick = { tab = item.third },
                                       icon = {
                                           Icon(
-                                              tab.icon,
-                                              contentDescription = tab.name
+                                              item.second,
+                                              item.first
                                           )
                                       },
                                       label = {
-                                          Text(tab.name, fontSize = 10.sp)
+                                          Text(
+                                              item.first,
+                                              fontSize = 10.sp
+                                          )
                                       },
                                       colors = NavigationBarItemDefaults.colors(
-                                          selectedIconColor = Green,
-                                          selectedTextColor = Green,
-                                          indicatorColor = Panel2,
-                                          unselectedIconColor = Soft,
-                                          unselectedTextColor = Soft
+                                          selectedIconColor = GREEN,
+                                          selectedTextColor = GREEN,
+                                          indicatorColor = PANEL2,
+                                          unselectedIconColor = SOFT,
+                                          unselectedTextColor = SOFT
                                       )
                                   )
                               }
@@ -230,12 +359,36 @@ jobs:
                               .padding(padding)
                               .fillMaxSize()
                       ) {
-                          when (selected) {
-                              0 -> Inicio()
-                              1 -> Agenda()
-                              2 -> Assistente()
-                              3 -> Central()
-                              4 -> Tarefas()
+
+                          when (tab) {
+
+                              0 -> HomeScreen(
+                                  tasks,
+                                  events,
+                                  openAgenda = { tab = 1 },
+                                  openTasks = { tab = 4 },
+                                  openNexa = { tab = 2 }
+                              )
+
+                              1 -> AgendaScreen(
+                                  events = events,
+                                  onChange = {
+                                      events = it
+                                      saveEvents(context, events)
+                                  }
+                              )
+
+                              2 -> NexaScreen()
+
+                              3 -> CentralScreen()
+
+                              4 -> TaskScreen(
+                                  tasks = tasks,
+                                  onChange = {
+                                      tasks = it
+                                      saveTasks(context, tasks)
+                                  }
+                              )
                           }
                       }
                   }
@@ -243,36 +396,35 @@ jobs:
           }
 
           @Composable
-          fun Cabecalho(
-              titulo: String,
-              subtitulo: String
+          fun Header(
+              title: String,
+              subtitle: String
           ) {
+
+              val context = LocalContext.current
+
               Row(
-                  modifier = Modifier
+                  Modifier
                       .fillMaxWidth()
                       .padding(bottom = 24.dp),
                   verticalAlignment = Alignment.CenterVertically
               ) {
-                  Box(
-                      modifier = Modifier
-                          .size(50.dp)
-                          .background(
-                              Brush.radialGradient(
-                                  listOf(
-                                      Green,
-                                      Color(0xFF075B3B)
-                                  )
-                              ),
-                              RoundedCornerShape(17.dp)
-                          ),
-                      contentAlignment = Alignment.Center
+
+                  Surface(
+                      modifier = Modifier.size(50.dp),
+                      shape = RoundedCornerShape(17.dp),
+                      color = GREEN
                   ) {
-                      Text(
-                          "N",
-                          color = Bg,
-                          fontSize = 29.sp,
-                          fontWeight = FontWeight.Black
-                      )
+                      Box(
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Text(
+                              "N",
+                              color = BG,
+                              fontSize = 29.sp,
+                              fontWeight = FontWeight.Black
+                          )
+                      }
                   }
 
                   Spacer(Modifier.width(14.dp))
@@ -280,34 +432,45 @@ jobs:
                   Column(
                       Modifier.weight(1f)
                   ) {
+
                       Text(
-                          titulo,
+                          title,
                           color = Color.White,
                           fontSize = 24.sp,
                           fontWeight = FontWeight.Bold
                       )
 
                       Text(
-                          subtitulo,
-                          color = Soft,
+                          subtitle,
+                          color = SOFT,
                           fontSize = 12.sp
                       )
                   }
 
-                  Icon(
-                      Icons.Default.Notifications,
-                      contentDescription = null,
-                      tint = Green
-                  )
+                  IconButton(
+                      onClick = {
+                          Toast.makeText(
+                              context,
+                              "Nenhum alerta pendente.",
+                              Toast.LENGTH_SHORT
+                          ).show()
+                      }
+                  ) {
+                      Icon(
+                          Icons.Default.Notifications,
+                          "Alertas",
+                          tint = GREEN
+                      )
+                  }
               }
           }
 
           @Composable
-          fun Pagina(
+          fun Page(
               content: @Composable ColumnScope.() -> Unit
           ) {
               Column(
-                  modifier = Modifier
+                  Modifier
                       .fillMaxSize()
                       .verticalScroll(rememberScrollState())
                       .padding(20.dp),
@@ -317,17 +480,29 @@ jobs:
 
           @Composable
           fun NexaCard(
+              onClick: (() -> Unit)? = null,
               content: @Composable ColumnScope.() -> Unit
           ) {
+
+              val modifier =
+                  if (onClick != null)
+                      Modifier
+                          .fillMaxWidth()
+                          .padding(vertical = 6.dp)
+                          .clickable { onClick() }
+                  else
+                      Modifier
+                          .fillMaxWidth()
+                          .padding(vertical = 6.dp)
+
               Card(
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .padding(vertical = 6.dp),
+                  modifier = modifier,
                   colors = CardDefaults.cardColors(
-                      containerColor = Panel
+                      containerColor = PANEL
                   ),
                   shape = RoundedCornerShape(22.dp)
               ) {
+
                   Column(
                       Modifier.padding(18.dp),
                       content = content
@@ -336,18 +511,24 @@ jobs:
           }
 
           @Composable
-          fun Inicio() = Pagina {
+          fun HomeScreen(
+              tasks: List<TaskItem>,
+              events: List<EventItem>,
+              openAgenda: () -> Unit,
+              openTasks: () -> Unit,
+              openNexa: () -> Unit
+          ) = Page {
 
-              Cabecalho(
+              Header(
                   "Meu Dia",
                   "NEXA • sua rotina em um só lugar"
               )
 
               Text(
                   "VISÃO GERAL",
-                  color = Green,
-                  fontSize = 12.sp,
-                  fontWeight = FontWeight.Bold
+                  color = GREEN,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 12.sp
               )
 
               NexaCard {
@@ -357,31 +538,33 @@ jobs:
                       fontWeight = FontWeight.Bold
                   )
 
-                  Spacer(Modifier.height(7.dp))
+                  Spacer(Modifier.height(6.dp))
 
                   Text(
-                      "Agenda, tarefas, alertas e informações importantes reunidas pela NEXA.",
-                      color = Soft
+                      "${events.size} compromisso(s) • ${tasks.count { !it.done }} tarefa(s) pendente(s)",
+                      color = SOFT
                   )
               }
 
-              Spacer(Modifier.height(14.dp))
+              Spacer(Modifier.height(12.dp))
 
               Text(
                   "PRÓXIMOS",
-                  color = Soft,
-                  fontSize = 12.sp,
-                  fontWeight = FontWeight.Bold
+                  color = SOFT,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 12.sp
               )
 
-              NexaCard {
+              NexaCard(onClick = openAgenda) {
+
                   Row(
                       verticalAlignment = Alignment.CenterVertically
                   ) {
+
                       Icon(
                           Icons.Default.CalendarToday,
                           null,
-                          tint = Green
+                          tint = GREEN
                       )
 
                       Spacer(Modifier.width(14.dp))
@@ -393,370 +576,7 @@ jobs:
                           )
 
                           Text(
-                              "Nenhum compromisso sincronizado.",
-                              color = Soft,
-                              fontSize = 13.sp
-                          )
-                      }
-                  }
-              }
-
-              NexaCard {
-                  Row(
-                      verticalAlignment = Alignment.CenterVertically
-                  ) {
-                      Icon(
-                          Icons.Default.CheckCircle,
-                          null,
-                          tint = Green
-                      )
-
-                      Spacer(Modifier.width(14.dp))
-
-                      Column {
-                          Text(
-                              "Tarefas",
-                              fontWeight = FontWeight.Bold
-                          )
-
-                          Text(
-                              "Nenhuma tarefa pendente.",
-                              color = Soft,
-                              fontSize = 13.sp
-                          )
-                      }
-                  }
-              }
-
-              Spacer(Modifier.height(16.dp))
-
-              Button(
-                  onClick = {},
-                  modifier = Modifier.fillMaxWidth(),
-                  colors = ButtonDefaults.buttonColors(
-                      containerColor = Green
-                  )
-              ) {
-                  Icon(
-                      Icons.Default.AutoAwesome,
-                      null,
-                      tint = Bg
-                  )
-
-                  Spacer(Modifier.width(8.dp))
-
-                  Text(
-                      "Falar com a NEXA",
-                      color = Bg,
-                      fontWeight = FontWeight.Bold
-                  )
-              }
-          }
-
-          @Composable
-          fun Agenda() = Pagina {
-
-              Cabecalho(
-                  "Agenda",
-                  "Compromissos e lembretes"
-              )
-
-              Row(
-                  Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                  listOf(
-                      "Hoje",
-                      "Amanhã",
-                      "Semana"
-                  ).forEachIndexed { index, texto ->
-
-                      Surface(
-                          color = if (index == 0) Green else Panel2,
-                          shape = RoundedCornerShape(14.dp)
-                      ) {
-                          Text(
-                              texto,
-                              color = if (index == 0) Bg else Color.White,
-                              modifier = Modifier.padding(
-                                  horizontal = 16.dp,
-                                  vertical = 10.dp
-                              ),
-                              fontWeight = FontWeight.Bold
-                          )
-                      }
-                  }
-              }
-
-              Spacer(Modifier.height(18.dp))
-
-              NexaCard {
-                  Text(
-                      "Sua agenda está pronta",
-                      fontWeight = FontWeight.Bold
-                  )
-
-                  Spacer(Modifier.height(6.dp))
-
-                  Text(
-                      "Os compromissos reais aparecerão aqui quando sua conta for conectada.",
-                      color = Soft
-                  )
-              }
-
-              Button(
-                  onClick = {},
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .padding(top = 12.dp),
-                  colors = ButtonDefaults.buttonColors(
-                      containerColor = Green
-                  )
-              ) {
-                  Text(
-                      "＋ Novo compromisso",
-                      color = Bg,
-                      fontWeight = FontWeight.Bold
-                  )
-              }
-          }
-
-          @Composable
-          fun Assistente() {
-
-              Box(
-                  modifier = Modifier
-                      .fillMaxSize()
-                      .background(
-                          Brush.radialGradient(
-                              colors = listOf(
-                                  Color(0xFF0C3B2A),
-                                  Bg
-                              ),
-                              radius = 900f
-                          )
-                      ),
-                  contentAlignment = Alignment.Center
-              ) {
-
-                  Column(
-                      horizontalAlignment = Alignment.CenterHorizontally,
-                      modifier = Modifier.padding(28.dp)
-                  ) {
-
-                      Text(
-                          "NEXA",
-                          color = Green,
-                          fontSize = 15.sp,
-                          fontWeight = FontWeight.Bold
-                      )
-
-                      Spacer(Modifier.height(30.dp))
-
-                      Surface(
-                          modifier = Modifier.size(180.dp),
-                          color = Green.copy(alpha = .10f),
-                          shape = CircleShape,
-                          border = androidx.compose.foundation.BorderStroke(
-                              2.dp,
-                              Green.copy(alpha = .55f)
-                          )
-                      ) {
-                          Box(
-                              contentAlignment = Alignment.Center
-                          ) {
-                              Icon(
-                                  Icons.Default.Mic,
-                                  contentDescription = "Falar",
-                                  tint = Green,
-                                  modifier = Modifier.size(68.dp)
-                              )
-                          }
-                      }
-
-                      Spacer(Modifier.height(30.dp))
-
-                      Text(
-                          "Como posso ajudar?",
-                          fontSize = 27.sp,
-                          fontWeight = FontWeight.Bold
-                      )
-
-                      Spacer(Modifier.height(8.dp))
-
-                      Text(
-                          "Toque no microfone para conversar com a NEXA",
-                          color = Soft
-                      )
-                  }
-              }
-          }
-
-          @Composable
-          fun Central() = Pagina {
-
-              Cabecalho(
-                  "Central",
-                  "Serviços e integrações"
-              )
-
-              val servicos = listOf(
-                  Triple(
-                      "Google",
-                      "Gmail • Agenda • Drive",
-                      Icons.Default.AccountCircle
-                  ),
-                  Triple(
-                      "WhatsApp",
-                      "Mensagens e notificações",
-                      Icons.Default.Chat
-                  ),
-                  Triple(
-                      "Redes sociais",
-                      "Instagram • Facebook",
-                      Icons.Default.Public
-                  ),
-                  Triple(
-                      "ChatGPT",
-                      "Inteligência da NEXA",
-                      Icons.Default.AutoAwesome
-                  )
-              )
-
-              servicos.forEach { item ->
-
-                  NexaCard {
-                      Row(
-                          verticalAlignment = Alignment.CenterVertically
-                      ) {
-
-                          Icon(
-                              item.third,
-                              null,
-                              tint = Green,
-                              modifier = Modifier.size(32.dp)
-                          )
-
-                          Spacer(Modifier.width(14.dp))
-
-                          Column(
-                              Modifier.weight(1f)
-                          ) {
-                              Text(
-                                  item.first,
-                                  fontWeight = FontWeight.Bold
-                              )
-
-                              Text(
-                                  item.second,
-                                  color = Soft,
-                                  fontSize = 12.sp
-                              )
-                          }
-
-                          Text(
-                              "Conectar",
-                              color = Green,
-                              fontSize = 12.sp,
-                              fontWeight = FontWeight.Bold
-                          )
-                      }
-                  }
-              }
-          }
-
-          @Composable
-          fun Tarefas() = Pagina {
-
-              Cabecalho(
-                  "Tarefas",
-                  "Prioridades e lembretes"
-              )
-
-              var tarefas by remember {
-                  mutableStateOf(
-                      emptyList<Pair<String, Boolean>>()
-                  )
-              }
-
-              NexaCard {
-
-                  if (tarefas.isEmpty()) {
-
-                      Text(
-                          "Tudo em ordem",
-                          fontWeight = FontWeight.Bold
-                      )
-
-                      Spacer(Modifier.height(6.dp))
-
-                      Text(
-                          "Você ainda não criou tarefas.",
-                          color = Soft
-                      )
-
-                  } else {
-
-                      tarefas.forEachIndexed { index, tarefa ->
-
-                          Row(
-                              verticalAlignment = Alignment.CenterVertically
-                          ) {
-
-                              Checkbox(
-                                  checked = tarefa.second,
-                                  onCheckedChange = { marcado ->
-
-                                      tarefas =
-                                          tarefas.toMutableList().also {
-                                              it[index] =
-                                                  tarefa.first to marcado
-                                          }
-                                  }
-                              )
-
-                              Text(tarefa.first)
-                          }
-                      }
-                  }
-              }
-
-              Button(
-                  onClick = {
-                      tarefas =
-                          tarefas + ("Nova tarefa" to false)
-                  },
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .padding(top = 12.dp),
-                  colors = ButtonDefaults.buttonColors(
-                      containerColor = Green
-                  )
-              ) {
-
-                  Text(
-                      "＋ Adicionar tarefa",
-                      color = Bg,
-                      fontWeight = FontWeight.Bold
-                  )
-              }
-
-              Spacer(Modifier.height(16.dp))
-
-              Text(
-                  "Alertas inteligentes • 1 dia • horas • 30 min • 10 min • horário exato",
-                  color = Soft,
-                  fontSize = 12.sp
-              )
-          }
-          EOF
-
-      - name: Compilar NEXA
-        working-directory: nexa
-        run: gradle --stacktrace --no-daemon assembleDebug
-
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: NEXA-Original-v0.2
-          path: nexa/app/build/outputs/apk/debug/app-debug.apk
+                              if (events.isEmpty())
+                                  "Nenhum compromisso criado."
+                              else
+   
