@@ -14,8 +14,13 @@ jobs:
 
       - name: Extrair projeto
         run: |
+          rm -rf nexa
           mkdir nexa
           unzip -q NEXA-Mobile-First-Base.zip -d nexa
+
+      - name: Corrigir compatibilidade Java Kotlin
+        run: |
+          sed -i '/buildFeatures/i\ compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }' nexa/app/build.gradle.kts
 
       - uses: actions/setup-java@v4
         with:
